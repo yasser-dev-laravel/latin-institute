@@ -36,13 +36,15 @@ type WeekDayType = {
 
 // أيام الأسبوع (قيمة افتراضية حتى يتم تحميل البيانات من API)
 const DEFAULT_WEEK_DAYS: WeekDayType[] = [
-  // { id: 1, name: "السبت", value: 1},
-  // { id: 2, name: "الأحد", value: 2 },
-  // { id: 3, name: "الاثنين", value: 4 },
-  // { id: 4, name: "الثلاثاء", value: 8 },
-  // { id: 5, name: "الأربعاء", value: 16 },
-  // { id: 6, name: "الخميس", value: 32 },
-  // { id: 7, name: "الجمعة", value: 64 },
+  
+  
+  { id: 1, name: "الاثنين", value: 2 },
+  { id: 2, name: "الثلاثاء", value: 4 },
+  { id: 3, name: "الأربعاء", value: 8 },
+  { id: 4, name: "الخميس", value: 16 },
+  { id: 5, name: "الجمعة", value: 32 },
+  { id: 6, name: "السبت", value: 64},
+  { id: 7, name: "الأحد", value: 1 },
 ];
 
 // تنسيق التاريخ بالعربية
@@ -183,9 +185,9 @@ export default function Groups() {
         setStudents(processedStudents);
         
         // Establecer los días de la semana desde la API
-        if (processedWeekDays && processedWeekDays.length > 0) {
-          setWeekDays(processedWeekDays);
-        }
+        // if (processedWeekDays && processedWeekDays.length > 0) {
+        //   setWeekDays(processedWeekDays);
+        // }
         
         // Cargar niveles si hay cursos disponibles
         if (processedCourses.length > 0) {
@@ -328,49 +330,131 @@ export default function Groups() {
         const selectedLevel = levels.find(l => l.id === newFormData.levelId);
         let classesCount = 0;
         
-        // Intentar obtener el número de clases del nivel
+        // الحصول على عدد المحاضرات من المستوى
         if (selectedLevel) {
-          // Primero intentar obtener de la propiedad classCount (si existe)
-          classesCount = (selectedLevel as any).classCount || (selectedLevel as any).classesCount || 0;
-          
-          // Si no hay classesCount en el nivel, buscar en el objeto del curso
-          if (!classesCount) {
-            const selectedCourse = courses.find(c => c.id === selectedLevel.courseId);
-            if (selectedCourse?.levels) {
-              const levelInCourse = selectedCourse.levels.find(l => l.id === selectedLevel.id);
-              if (levelInCourse) {
-                classesCount = (levelInCourse as any).classCount || (levelInCourse as any).classesCount || 0;
+          // استخدام خاصية sessionsCount الموجودة في كائن المستوى
+          if (selectedLevel.sessionsCount) {
+            classesCount = selectedLevel.sessionsCount-1;
+            console.log(`عدد المحاضرات من sessionsCount: ${classesCount}`);
+          } else {
+            // محاولة الحصول على عدد المحاضرات من خصائص أخرى
+            classesCount = (selectedLevel as any).classCount || (selectedLevel as any).classesCount || 0;
+            
+            // إذا لم يتم العثور على عدد المحاضرات، البحث في كائن الكورس
+            if (!classesCount) {
+              const selectedCourse = courses.find(c => c.id === selectedLevel.courseId);
+              if (selectedCourse?.levels) {
+                const levelInCourse = selectedCourse.levels.find(l => l.id === selectedLevel.id);
+                if (levelInCourse) {
+                  classesCount = (levelInCourse as any).sessionsCount || (levelInCourse as any).classCount || (levelInCourse as any).classesCount || 0;
+                }
               }
             }
           }
         }
         
-        // Si aún no tenemos el número de clases, usar un valor predeterminado de 10
+        // إذا لم يتم العثور على عدد المحاضرات، استخدام قيمة افتراضية 5
         if (!classesCount) {
-          classesCount = 10; // Valor predeterminado de 10 clases
-          console.log("Usando número de clases predeterminado: 10");
+          classesCount = 5; // قيمة افتراضية 5 محاضرات
+          console.log(`استخدام عدد محاضرات افتراضي: ${classesCount}`);
         } else {
-          console.log(`Número de clases para el nivel ${selectedLevel?.name}: ${classesCount}`);
+          console.log(`عدد المحاضرات للمستوى ${selectedLevel?.name}: ${classesCount}`);
         }
         
-        // Calcular la fecha de fin basada en los días seleccionados, fecha de inicio y número de clases
+        // حساب تاريخ نهاية الكورس بناءً على عدد المحاضرات وأيام الكورس وتاريخ البداية
         if (classesCount > 0) {
-          const startDate = new Date(value);
-          const selectedDays = newFormData.days as number[];
-          let classesDone = 0;
-          let currentDate = new Date(startDate);
+          console.log(`عدد المحاضرات المطلوبة للكورس: ${classesCount}`);
           
-          // Iterar hasta completar todas las clases
+          // تحويل تاريخ البداية إلى كائن Date
+          const startDate = new Date(value);
+          console.log(`تاريخ بداية الكورس: ${startDate.toISOString().split('T')[0]}`);
+          
+          // الحصول على الأيام المحددة للكورس
+          const selectedDays = newFormData.days as number[];
+          console.log(`الأيام المحددة للكورس: ${selectedDays.map(d => getArabicDayName(d)).join(', ')}`);
+          
+          // التحقق من وجود أيام محددة
+          if (selectedDays.length === 0) {
+            console.error('لم يتم تحديد أي أيام للكورس');
+            return newFormData;
+          }
+          
+          // إنشاء نسخة من تاريخ البداية للعمل عليها
+          let currentDate = new Date(startDate);
+          let classesDone = 0;
+          let lecturesDates = [];
+          
+          // حساب تاريخ المحاضرات حتى نصل إلى عدد المحاضرات المطلوب
           while (classesDone < classesCount) {
+            // الانتقال لليوم التالي
             currentDate.setDate(currentDate.getDate() + 1);
             
-            // Si el día de la semana está en los días seleccionados, contar una clase
-            if (selectedDays.includes(currentDate.getDay())) {
+            // الحصول على رقم اليوم في الأسبوع (0 = الأحد, 1 = الاثنين, ...)
+            const jsDay = currentDate.getDay();
+            
+            // التحقق مما إذا كان هذا اليوم من ضمن أيام الكورس
+            if (selectedDays.includes(jsDay)) {
               classesDone++;
+              const lectureDate = new Date(currentDate);
+              lecturesDates.push(lectureDate);
+              console.log(`المحاضرة ${classesDone}/${classesCount}: ${getArabicDayName(jsDay)} ${lectureDate.toISOString().split('T')[0]}`);
             }
           }
           
-          // Formatear la fecha de fin como YYYY-MM-DD
+          // المحاضرة الأخيرة هي تاريخ نهاية الكورس
+          const endDateFormatted = currentDate.toISOString().split('T')[0];
+          console.log(`تاريخ نهاية الكورس المحسوب: ${endDateFormatted}`);
+          newFormData.endDate = endDateFormatted;
+        }
+      }
+      
+      // إذا تم تغيير المستوى أو الكورس، قم بحساب تاريخ النهاية إذا كان هناك تاريخ بداية موجود
+      if ((field === "levelId" || field === "courseId") && formData.startDate && newFormData.days && newFormData.days.length > 0) {
+        const selectedLevel = levels.find(l => l.id === newFormData.levelId);
+        let classesCount = 0;
+
+        if (selectedLevel) {
+          if (selectedLevel.sessionsCount) {
+            classesCount = selectedLevel.sessionsCount - 1;
+          } else {
+            classesCount = (selectedLevel as any).classCount || (selectedLevel as any).classesCount || 0;
+
+            if (!classesCount) {
+              const selectedCourse = courses.find(c => c.id === selectedLevel.courseId);
+              if (selectedCourse?.levels) {
+                const levelInCourse = selectedCourse.levels.find(l => l.id === selectedLevel.id);
+                if (levelInCourse) {
+                  classesCount = (levelInCourse as any).sessionsCount || (levelInCourse as any).classCount || (levelInCourse as any).classesCount || 0;
+                }
+              }
+            }
+          }
+        }
+
+        if (!classesCount) {
+          classesCount = 5; // قيمة افتراضية
+        }
+
+        if (classesCount > 0) {
+          const startDate = new Date(formData.startDate);
+          const selectedDays = newFormData.days as number[];
+
+          if (selectedDays.length === 0) {
+            return newFormData;
+          }
+
+          let currentDate = new Date(startDate);
+          let classesDone = 0;
+
+          while (classesDone < classesCount) {
+            currentDate.setDate(currentDate.getDate() + 1);
+            const jsDay = currentDate.getDay();
+
+            if (selectedDays.includes(jsDay)) {
+              classesDone++;
+            }
+          }
+
           const endDateFormatted = currentDate.toISOString().split('T')[0];
           newFormData.endDate = endDateFormatted;
         }
@@ -510,6 +594,26 @@ export default function Groups() {
       })
       .filter(Boolean)
       .join(", ");
+  };
+  
+  // Función para obtener el nombre del día en árabe
+  const getArabicDayName = (dayIndex: number) => {
+    const arabicDays = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+    return arabicDays[dayIndex];
+  };
+  
+  // Convertir el índice de JavaScript (0-6) al ID correspondiente en DEFAULT_WEEK_DAYS
+  const convertJsDayToId = (jsDay: number): number => {
+    switch (jsDay) {
+      case 0: return 7; // الأحد
+      case 1: return 1; // الاثنين
+      case 2: return 2; // الثلاثاء
+      case 3: return 3; // الأربعاء
+      case 4: return 4; // الخميس
+      case 5: return 5; // الجمعة
+      case 6: return 6; // السبت
+      default: return -1;
+    }
   };
 
   return (
@@ -671,7 +775,7 @@ export default function Groups() {
                         firstLevelId = courseLevels[0].id;
                       } 
                       // Si no hay niveles filtrados, buscar en el objeto del curso
-                      else if (selectedCourse?.levels?.length > 0) {
+                       if (selectedCourse?.levels?.length > 0) {
                         firstLevelId = selectedCourse.levels[0].id;
                       }
                       
@@ -722,10 +826,11 @@ export default function Groups() {
                           if (!selectedCourseId) return false;
                           return level.courseId === selectedCourseId;
                         })
-                        .map(level => (
+                        .map((level ,idx)=> (
                           <SelectItem key={level.id} value={level.id.toString()}>
-                            {level.name}
+                            {level.name} 
                           </SelectItem>
+                          
                         ))}
                         
                       {/* Si no hay niveles con courseId, mostrar niveles del objeto curso */}
@@ -741,6 +846,23 @@ export default function Groups() {
                       }
                     </SelectContent>
                   </Select>
+                  {formData.levelId > 0 && (
+                    <div className="text-xs text-muted-foreground mt-2">
+                      {(() => {
+                        const selectedLevel = levels.find(l => l.id === formData.levelId);
+                        if (selectedLevel) {
+                          return (
+                            <>
+                              <span> المحاضرات: {selectedLevel.sessionsCount || "--"}</span>
+                              <span> -الزمن: {selectedLevel.sessionsDiortion || "--"} </span>
+                              {selectedLevel.price && <span> -المبلغ: {selectedLevel.price}</span>}
+                            </>
+                          );
+                        }
+                        return <div>لا توجد معلومات للمستوى المحدد</div>;
+                      })()}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="space-y-2">
@@ -886,7 +1008,15 @@ export default function Groups() {
               <div className="space-y-2">
                 <Label>أيام المحاضرات *</Label>
                 <div className="grid grid-cols-4 gap-2">
-                  {weekDays.map((day) => (
+                  {[
+                    { id: 0, name: "الأحد" },
+                    { id: 1, name: "الاثنين" },
+                    { id: 2, name: "الثلاثاء" },
+                    { id: 3, name: "الأربعاء" },
+                    { id: 4, name: "الخميس" },
+                    { id: 5, name: "الجمعة" },
+                    { id: 6, name: "السبت" }
+                  ].map((day) => (
                     <div key={day.id} className="flex items-center space-x-2 space-x-reverse">
                       <Checkbox 
                         id={`day-${day.id}`}
@@ -942,8 +1072,15 @@ export default function Groups() {
                           selected={formData.startDate ? new Date(formData.startDate) : undefined}
                           onSelect={(date) => {
                             if (date) {
-                              // تخزين التاريخ المحدد للتحقق منه لاحقًا
-                              const selectedDate = date;
+                              // ضبط الوقت إلى منتصف الليل لتجنب مشاكل المنطقة الزمنية
+                              const selectedDate = new Date(
+                                date.getFullYear(),
+                                date.getMonth(),
+                                date.getDate(),
+                                12, 0, 0 // ضبط الوقت إلى الساعة 12 ظهرًا
+                              );
+                              
+                              console.log("\u0627\u0644\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0645\u062d\u062f\u062f:", selectedDate.toISOString());
                               
                               // التحقق من أيام المحاضرات المحددة
                               const selectedDays = formData.days as number[] || [];
@@ -954,50 +1091,56 @@ export default function Groups() {
                                 return;
                               }
                               
-                              const jsDay = selectedDate.getDay(); // 0 = الأحد، 1 = الاثنين، إلخ (في نظام JavaScript)
+                              // الحصول على يوم الأسبوع (0-6) من التاريخ المحدد
+                              const jsDay = selectedDate.getDay(); // 0 = الأحد، 1 = الاثنين، إلخ
                               
-                              // تحويل يوم JavaScript إلى تنسيقنا
-                              let dayId;
-                              switch (jsDay) {
-                                case 0: dayId = 2; break; // الأحد
-                                case 1: dayId = 3; break; // الاثنين
-                                case 2: dayId = 4; break; // الثلاثاء
-                                case 3: dayId = 5; break; // الأربعاء
-                                case 4: dayId = 6; break; // الخميس
-                                case 5: dayId = 7; break; // الجمعة
-                                case 6: dayId = 1; break; // السبت
-                                default: dayId = -1;
-                              }
+                              // تحويل قيمة getDay إلى المعرف المناسب من DEFAULT_WEEK_DAYS
+                              const dayId = convertJsDayToId(jsDay);
                               
-                              // الحصول على اسم اليوم لعرضه في رسالة الخطأ
-                              const dayObj = weekDays.find(d => d.id === dayId);
-                              const dayName = dayObj?.name || '';
+                              // طباعة معلومات للتصحيح
+                              console.log("اليوم المحدد من JavaScript:", jsDay);
+                              console.log("معرف اليوم المناسب للمقارنة:", dayId);
+                              console.log("أيام المجموعة المحددة:", selectedDays);
+                              
+                              // الحصول على اسم اليوم بالعربية
+                              const dayName = getArabicDayName(jsDay);
                               
                               // التحقق من توافق اليوم مع أيام المحاضرات
                               if (!selectedDays.includes(dayId)) {
-                                // تخزين رسالة الخطأ لعرضها بعد غلق التقويم
-                                const tempError = `لا يمكن اختيار يوم ${dayName} لأنه ليس من أيام المحاضرات المحددة`;
-                                
-                                // تعيين مؤقت لعرض الخطأ بعد غلق التقويم
-                                setTimeout(() => {
-                                  setDateError(tempError);
-                                }, 100); // تأخير بسيط للتأكد من أن التقويم قد أغلق
+                                // عرض رسالة خطأ فورية وإعادة تعيين التاريخ
+                                alert(`لا يمكن اختيار يوم ${dayName} لأنه ليس من أيام المحاضرات المحددة`);
+                                // إعادة تعيين التاريخ
+                                handleChange("startDate", "");
                                 return;
                               }
                               
                               // Si el día coincide, limpiar error y actualizar fecha
                               setDateError("");
-                              const formattedDate = date.toISOString().split('T')[0];
+                              // استخدام التاريخ المعدل لتجنب مشاكل المنطقة الزمنية
+                              const formattedDate = selectedDate.toISOString().split('T')[0];
+                              console.log("\u0627\u0644\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0645\u0646\u0633\u0642:", formattedDate);
                               handleChange("startDate", formattedDate);
                             }
                           }}
                           disabled={(date) => {
-                            // Deshabilitar fechas pasadas
+                            // تعطيل التواريخ السابقة
                             if (isBefore(date, new Date()) && !isSameDay(date, new Date())) {
                               return true;
                             }
                             
-                            // Ya no deshabilitamos días que no coinciden con los días seleccionados
+                            // تعطيل الأيام التي لا تتوافق مع أيام المجموعة المحددة
+                            const selectedDays = formData.days as number[] || [];
+                            if (selectedDays.length > 0) {
+                              const jsDay = date.getDay(); // الحصول على يوم الأسبوع (0-6)
+                              
+                              // تحويل قيمة getDay إلى المعرف المناسب من DEFAULT_WEEK_DAYS
+                              const dayId = convertJsDayToId(jsDay);
+                              
+                              if (!selectedDays.includes(dayId)) {
+                                return true; // تعطيل اليوم إذا لم يكن ضمن الأيام المحددة
+                              }
+                            }
+                            
                             return false;
                           }}
                           locale={ar}
